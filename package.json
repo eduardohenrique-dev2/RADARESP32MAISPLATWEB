@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-web.mjs",
-    "check:web": "node --check api/ws.js && node --check data/config.js && node --check data/radar.js && node --check data/app.js"
+    "check:web": "node --check api/ws.js && node --check data/config.js && node --check data/radar.js && node --check data/app.js && node --check scripts/serve-web.mjs",
+    "demo": "npm run build && node scripts/serve-web.mjs"
   },
   "engines": { "node": ">=20" },
   "dependencies": { "ioredis": "6.0.0", "ws": "8.21.3" }
