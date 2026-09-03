@@ -1,5 +1,165 @@
 #include "Radar.h"
 #include "Config.h"
-Radar::Radar(ServoControl& servo,Ultrasonic& ultrasonic,Alarm& alarm,Logger& logger):_servo(servo),_ultrasonic(ultrasonic),_alarm(alarm),_logger(logger){}
-void Radar::begin(){applySettings();_nextTarget=constrain(90,Config::settings.servoMinAngle,Config::settings.servoMaxAngle);_servo.setTarget(_nextTarget);}void Radar::applySettings(){Config::sanitize();_servo.setMoveInterval(Config::settings.servoMoveIntervalMs);_ultrasonic.setMaxDistance(Config::settings.maxDistanceCm);_alarm.setThreshold(Config::settings.alarmDistanceCm);_alarm.setBuzzerEnabled(Config::settings.buzzerEnabled);_alarm.setLedEnabled(Config::settings.ledEnabled);_alarm.setDetectionEnabled(Config::settings.alarmEnabled);const int current=_servo.currentAngle();if(current<Config::settings.servoMinAngle)_servo.setTarget(Config::settings.servoMinAngle);else if(current>Config::settings.servoMaxAngle)_servo.setTarget(Config::settings.servoMaxAngle);}void Radar::start(){_running=true;_nextTarget=constrain(_servo.currentAngle(),Config::settings.servoMinAngle,Config::settings.servoMaxAngle);_servo.setTarget(_nextTarget);_measurementRequested=false;}void Radar::stop(){_running=false;_measurementRequested=false;_alarm.clear();}void Radar::center(){_running=false;_measurementRequested=false;_alarm.clear();_servo.setTarget(90);}void Radar::restart(){clearStats();_direction=1;_nextTarget=Config::settings.servoMinAngle;_servo.setTarget(_nextTarget);_measurementRequested=false;_running=true;}void Radar::clearStats(){_stats=RadarStats();}
-void Radar::advanceTarget(){int candidate=_servo.currentAngle()+(_direction*Config::settings.servoStep);if(candidate>=Config::settings.servoMaxAngle){candidate=Config::settings.servoMaxAngle;_direction=-1;}else if(candidate<=Config::settings.servoMinAngle){candidate=Config::settings.servoMinAngle;_direction=1;}_nextTarget=candidate;_servo.setTarget(_nextTarget);}void Radar::processMeasurement(const UltrasonicResult& result,int16_t rssi){RadarReading reading;reading.timestamp=result.timestampMs;reading.angle=_servo.currentAngle();reading.distanceCm=result.distanceCm;reading.valid=result.valid;reading.rssi=rssi;const AlarmTransition transition=_alarm.process(reading.distanceCm,reading.valid);reading.alarm=transition.active;if(!reading.valid)reading.event="SENSOR_ERROR";else if(transition.activated)reading.event="OBJECT_DETECTED";else if(transition.cleared)reading.event="OBJECT_CLEARED";else reading.event="SCAN";++_stats.readings;_stats.lastAngle=reading.angle;_stats.lastDistanceCm=reading.distanceCm;_stats.sensorOk=reading.valid;if(reading.valid){if(_stats.minDistanceCm<=0.0f||reading.distanceCm<_stats.minDistanceCm)_stats.minDistanceCm=reading.distanceCm;if(reading.distanceCm>_stats.maxDistanceCm)_stats.maxDistanceCm=reading.distanceCm;}if(transition.activated){++_stats.alarms;++_stats.objectsDetected;}_logger.log(reading.timestamp,reading.angle,reading.distanceCm,reading.alarm,reading.event,reading.rssi);if(_readingCallback)_readingCallback(reading);}void Radar::update(int16_t rssi){_servo.update();_ultrasonic.update();if(!_running)return;if(_ultrasonic.hasNewResult()){const UltrasonicResult result=_ultrasonic.consumeResult();_measurementRequested=false;processMeasurement(result,rssi);advanceTarget();return;}if(!_servo.atTarget()||_ultrasonic.busy())return;const uint32_t now=millis();if(now-_servo.lastMoveMillis()<Config::SERVO_SETTLE_MS)return;if(!_measurementRequested)_measurementRequested=_ultrasonic.requestMeasurement();}
+
+Radar::Radar(ServoControl& servo, Ultrasonic& ultrasonic, Alarm& alarm, Logger& logger)
+    : _servo(servo), _ultrasonic(ultrasonic), _alarm(alarm), _logger(logger) {}
+
+void Radar::begin() {
+  applySettings();
+  _nextTarget = constrain(90, Config::settings.servoMinAngle, Config::settings.servoMaxAngle);
+  _servo.setTarget(_nextTarget);
+}
+
+void Radar::applySettings() {
+  Config::sanitize();
+  _servo.setMoveInterval(Config::settings.servoMoveIntervalMs);
+  _ultrasonic.setMaxDistance(Config::settings.maxDistanceCm);
+  _alarm.setThreshold(Config::settings.alarmDistanceCm);
+  _alarm.setBuzzerEnabled(Config::settings.buzzerEnabled);
+  _alarm.setLedEnabled(Config::settings.ledEnabled);
+  _alarm.setDetectionEnabled(Config::settings.alarmEnabled);
+
+  const int current = _servo.currentAngle();
+  if (current < Config::settings.servoMinAngle) {
+    _servo.setTarget(Config::settings.servoMinAngle);
+  } else if (current > Config::settings.servoMaxAngle) {
+    _servo.setTarget(Config::settings.servoMaxAngle);
+  }
+}
+
+void Radar::start() {
+  _manualMode = false;
+  _running = true;
+  _nextTarget = constrain(_servo.currentAngle(), Config::settings.servoMinAngle, Config::settings.servoMaxAngle);
+  _servo.setTarget(_nextTarget);
+  _measurementRequested = false;
+}
+
+void Radar::stop() {
+  _running = false;
+  _manualMode = false;
+  _measurementRequested = false;
+  _alarm.clear();
+}
+
+void Radar::center() {
+  _running = false;
+  _manualMode = false;
+  _measurementRequested = false;
+  _alarm.clear();
+  _servo.setTarget(90);
+}
+
+void Radar::restart() {
+  clearStats();
+  _manualMode = false;
+  _direction = 1;
+  _nextTarget = Config::settings.servoMinAngle;
+  _servo.setTarget(_nextTarget);
+  _measurementRequested = false;
+  _running = true;
+}
+
+void Radar::enableManualMode() {
+  _manualMode = true;
+  _running = true;
+  _nextTarget = constrain(_servo.currentAngle(), Config::settings.servoMinAngle, Config::settings.servoMaxAngle);
+  _servo.setTarget(_nextTarget);
+  _measurementRequested = false;
+}
+
+void Radar::setManualTarget(int angle) {
+  if (!_manualMode) return;
+  _nextTarget = constrain(angle, Config::settings.servoMinAngle, Config::settings.servoMaxAngle);
+  _servo.setTarget(_nextTarget);
+}
+
+void Radar::clearStats() {
+  _stats = RadarStats();
+}
+
+void Radar::advanceTarget() {
+  int candidate = _servo.currentAngle() + (_direction * Config::settings.servoStep);
+
+  if (candidate >= Config::settings.servoMaxAngle) {
+    candidate = Config::settings.servoMaxAngle;
+    _direction = -1;
+  } else if (candidate <= Config::settings.servoMinAngle) {
+    candidate = Config::settings.servoMinAngle;
+    _direction = 1;
+  }
+
+  _nextTarget = candidate;
+  _servo.setTarget(_nextTarget);
+}
+
+void Radar::processMeasurement(const UltrasonicResult& result, int16_t rssi) {
+  RadarReading reading;
+  reading.timestamp = result.timestampMs;
+  reading.angle = _servo.currentAngle();
+  reading.distanceCm = result.distanceCm;
+  reading.valid = result.valid;
+  reading.rssi = rssi;
+
+  const AlarmTransition transition = _alarm.process(reading.distanceCm, reading.valid);
+  reading.alarm = transition.active;
+
+  if (!reading.valid) {
+    reading.event = "SENSOR_ERROR";
+  } else if (transition.activated) {
+    reading.event = "OBJECT_DETECTED";
+  } else if (transition.cleared) {
+    reading.event = "OBJECT_CLEARED";
+  } else {
+    reading.event = _manualMode ? "MANUAL_SCAN" : "SCAN";
+  }
+
+  ++_stats.readings;
+  _stats.lastAngle = reading.angle;
+  _stats.lastDistanceCm = reading.distanceCm;
+  _stats.sensorOk = reading.valid;
+
+  if (reading.valid) {
+    if (_stats.minDistanceCm <= 0.0f || reading.distanceCm < _stats.minDistanceCm) {
+      _stats.minDistanceCm = reading.distanceCm;
+    }
+    if (reading.distanceCm > _stats.maxDistanceCm) {
+      _stats.maxDistanceCm = reading.distanceCm;
+    }
+  }
+
+  if (transition.activated) {
+    ++_stats.alarms;
+    ++_stats.objectsDetected;
+  }
+
+  _logger.log(reading.timestamp, reading.angle, reading.distanceCm, reading.alarm, reading.event, reading.rssi);
+  if (_readingCallback) _readingCallback(reading);
+}
+
+void Radar::update(int16_t rssi) {
+  _servo.update();
+  _ultrasonic.update();
+
+  if (!_running) return;
+
+  if (_ultrasonic.hasNewResult()) {
+    const UltrasonicResult result = _ultrasonic.consumeResult();
+    _measurementRequested = false;
+    processMeasurement(result, rssi);
+
+    if (!_manualMode) {
+      advanceTarget();
+    }
+    return;
+  }
+
+  if (!_servo.atTarget() || _ultrasonic.busy()) return;
+
+  const uint32_t now = millis();
+  if (now - _servo.lastMoveMillis() < Config::SERVO_SETTLE_MS) return;
+
+  if (!_measurementRequested) {
+    _measurementRequested = _ultrasonic.requestMeasurement();
+  }
+}
