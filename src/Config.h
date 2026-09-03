@@ -4,11 +4,20 @@
 
 namespace Config {
 
+constexpr uint8_t PIN_JOYSTICK_X = 1;   // ADC1
+constexpr uint8_t PIN_JOYSTICK_Y = 2;   // ADC1 (reservado para expansão)
 constexpr uint8_t PIN_TRIG = 4;
 constexpr uint8_t PIN_ECHO = 5;
 constexpr uint8_t PIN_SERVO = 6;
 constexpr uint8_t PIN_BUZZER = 7;
-constexpr uint8_t PIN_LED = 21;  // WS2812 RGB onboard da Waveshare ESP32-S3-Zero
+constexpr uint8_t PIN_JOYSTICK_SW = 8;  // botão com INPUT_PULLUP
+constexpr uint8_t PIN_LED = 21;         // WS2812 RGB onboard da Waveshare ESP32-S3-Zero
+
+constexpr uint16_t JOYSTICK_ADC_MAX = 4095;
+constexpr uint16_t JOYSTICK_CENTER = 2048;
+constexpr uint16_t JOYSTICK_DEADZONE = 430;
+constexpr uint16_t JOYSTICK_UPDATE_MS = 35;
+constexpr uint16_t JOYSTICK_DEBOUNCE_MS = 45;
 
 constexpr char AP_SSID[] = "SmartRadar";
 constexpr char AP_PASSWORD[] = "SmartRadar2026";
