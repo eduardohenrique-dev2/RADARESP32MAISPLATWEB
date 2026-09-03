@@ -8,7 +8,7 @@ constexpr uint8_t PIN_TRIG = 4;
 constexpr uint8_t PIN_ECHO = 5;
 constexpr uint8_t PIN_SERVO = 6;
 constexpr uint8_t PIN_BUZZER = 7;
-constexpr uint8_t PIN_LED = 8;
+constexpr uint8_t PIN_LED = 21;  // WS2812 RGB onboard da Waveshare ESP32-S3-Zero
 
 constexpr char AP_SSID[] = "SmartRadar";
 constexpr char AP_PASSWORD[] = "SmartRadar2026";
