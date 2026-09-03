@@ -32,7 +32,7 @@ class Alarm {
 
   uint8_t _buzzerPin = 255;
   uint8_t _ledPin = 255;
-  Adafruit_NeoPixel _pixel{1, -1, NEO_RGB + NEO_KHZ800};
+  Adafruit_NeoPixel _pixel{1, -1, NEO_GRB + NEO_KHZ800};
 
   bool _active = false;
   bool _detectionEnabled = true;
